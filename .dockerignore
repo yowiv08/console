@@ -1,0 +1,15 @@
+node_modules
+dist
+dist-ssr
+runtime
+.playwright-mcp
+.git
+.gitignore
+.dockerignore
+*.log
+*.local
+coverage
+Dockerfile*
+README.md
+DESIGN.md
+PRODUCT.md
