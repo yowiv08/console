@@ -1,0 +1,15 @@
+html {
+  background: oklch(0.982 0.004 145);
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+}
