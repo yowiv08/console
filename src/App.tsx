@@ -40,6 +40,7 @@ import {
 import './App.css'
 import {
   type Account,
+  type CodeType,
   type ExchangeRun,
   type ExchangeStatus,
   type ScanSession,
@@ -70,6 +71,12 @@ type CodeFlowStep = {
   offsetMs: number
 }
 
+type CodeTypeOption = {
+  value: CodeType
+  label: string
+  detail: string
+}
+
 type CodeFlowState = {
   status: CodeFlowStatus
   activeIndex: number
@@ -88,7 +95,7 @@ const navItems: NavItem[] = [
   { path: '/runs', label: '运行结果', icon: ListChecks },
 ]
 
-const codeFlowSteps: CodeFlowStep[] = [
+const legacyCodeFlowSteps: CodeFlowStep[] = [
   {
     key: 'submit',
     title: '提交运行',
@@ -124,6 +131,46 @@ const codeFlowSteps: CodeFlowStep[] = [
     title: '写入结果',
     description: '保存运行结果并同步账号 TDI 状态',
     offsetMs: CODE_RUN_TIMEOUT_MS,
+  },
+]
+
+const httpCodeFlowSteps: CodeFlowStep[] = [
+  {
+    key: 'submit',
+    title: '提交运行',
+    description: '创建换码请求并校验账号与 appid',
+    offsetMs: 0,
+  },
+  {
+    key: 'refresh',
+    title: '刷新登录态',
+    description: '续期账号令牌并确认 unionid',
+    offsetMs: 1_000,
+  },
+  {
+    key: 'pc-yyb-login',
+    title: 'pc_yyb 换码',
+    description: '发送签名请求并读取 login_code',
+    offsetMs: 2_000,
+  },
+  {
+    key: 'finish',
+    title: '写入结果',
+    description: '保存运行结果并同步账号令牌',
+    offsetMs: CODE_RUN_TIMEOUT_MS,
+  },
+]
+
+const codeTypeOptions: CodeTypeOption[] = [
+  {
+    value: 2,
+    label: 'HTTP',
+    detail: 'pc_yyb',
+  },
+  {
+    value: 1,
+    label: 'Native',
+    detail: 'ManualAuth',
   },
 ]
 
@@ -804,6 +851,7 @@ function CodePage({
   const accounts = useAccountsQuery()
   const [unionid, setUnionid] = useState('')
   const [appid, setAppid] = useState('')
+  const [codeType, setCodeType] = useState<CodeType>(2)
   const [lastRun, setLastRun] = useState<ExchangeRun | null>(null)
   const [copied, setCopied] = useState(false)
   const [exchangeStartedAt, setExchangeStartedAt] = useState<number | null>(null)
@@ -820,7 +868,7 @@ function CodePage({
   }, [apiBaseUrl])
 
   const exchange = useMutation({
-    mutationFn: () => api.exchangeCode(selectedUnionid, appid.trim()),
+    mutationFn: () => api.exchangeCode(selectedUnionid, appid.trim(), codeType),
     onMutate: () => {
       setLastRun(null)
       setCopied(false)
@@ -839,6 +887,7 @@ function CodePage({
     exchangeStartedAt,
     lastRun,
     exchange.isError ? exchange.error : null,
+    codeFlowStepsForType(codeType),
   )
 
   const copyCode = async () => {
@@ -862,7 +911,7 @@ function CodePage({
       <section className="section-toolbar">
         <div>
           <h2>获取 Code</h2>
-          <p>选择账号，提交目标小程序 <code>appid</code>，同步执行换码链。</p>
+          <p>选择账号、链路和目标小程序 <code>appid</code>，同步执行换码。</p>
         </div>
         <button
           type="submit"
@@ -883,7 +932,7 @@ function CodePage({
         <section className="panel form-panel">
           <PanelHeader
             title="运行参数"
-            description="appid 是目标小程序，TDI 由所选账号决定"
+            description="type=1 走 Native，type=2 走 pc_yyb HTTP"
           />
           <form
             id="code-exchange-form"
@@ -915,6 +964,26 @@ function CodePage({
                 placeholder="输入目标小程序 appid"
               />
             </label>
+            <fieldset className="code-type-fieldset">
+              <legend>链路类型</legend>
+              <div className="segmented-control">
+                {codeTypeOptions.map((option) => (
+                  <label key={option.value}>
+                    <input
+                      type="radio"
+                      name="code-type"
+                      value={option.value}
+                      checked={codeType === option.value}
+                      onChange={() => setCodeType(option.value)}
+                    />
+                    <span>
+                      <strong>{option.label}</strong>
+                      <small>type={option.value} · {option.detail}</small>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </form>
 
           {accounts.isLoading ? <SkeletonRows rows={2} /> : null}
@@ -941,7 +1010,12 @@ function CodePage({
               ) : null
             }
           />
-          <CodeStatusFlow flow={codeFlow} lastRun={lastRun} copied={copied} />
+          <CodeStatusFlow
+            flow={codeFlow}
+            lastRun={lastRun}
+            copied={copied}
+            steps={codeFlowStepsForType(codeType)}
+          />
         </section>
       </div>
     </div>
@@ -952,15 +1026,17 @@ function CodeStatusFlow({
   flow,
   lastRun,
   copied,
+  steps,
 }: {
   flow: CodeFlowState
   lastRun: ExchangeRun | null
   copied: boolean
+  steps: CodeFlowStep[]
 }) {
   return (
     <div className="code-flow">
       <ol className="step-list">
-        {codeFlowSteps.map((step, index) => {
+        {steps.map((step, index) => {
           const reached = shouldReachCodeStep(flow, index)
           const current = flow.status === 'running' && index === flow.activeIndex
           const failed = flow.status === 'failed' && index === flow.activeIndex
@@ -1363,6 +1439,7 @@ function useCodeFlow(
   startedAt: number | null,
   lastRun: ExchangeRun | null,
   error: unknown,
+  steps: CodeFlowStep[],
 ) {
   const [now, setNow] = useState(() => Date.now())
 
@@ -1375,7 +1452,7 @@ function useCodeFlow(
     return () => window.clearInterval(timer)
   }, [isRunning, startedAt])
 
-  return getCodeFlowState(isRunning, startedAt, lastRun, error, now)
+  return getCodeFlowState(isRunning, startedAt, lastRun, error, now, steps)
 }
 
 function hasPersistedTDI(account: Account) {
@@ -1494,12 +1571,13 @@ function getCodeFlowState(
   lastRun: ExchangeRun | null,
   error: unknown,
   now: number,
+  steps: CodeFlowStep[],
 ): CodeFlowState {
   if (isRunning) {
     const elapsedMs = startedAt ? Math.max(0, now - startedAt) : 0
     return {
       status: 'running',
-      activeIndex: activeCodeStepIndex(elapsedMs),
+      activeIndex: activeCodeStepIndex(elapsedMs, steps),
       elapsedMs,
       percent: Math.min(99, (elapsedMs / CODE_RUN_TIMEOUT_MS) * 100),
       label: `运行 ${formatCountdown(elapsedMs)} / 01:15`,
@@ -1514,8 +1592,8 @@ function getCodeFlowState(
     return {
       status: lastRun.status === 'succeeded' ? 'succeeded' : 'failed',
       activeIndex: failed
-        ? failedCodeStepIndex(lastRun.error)
-        : codeFlowSteps.length - 1,
+        ? failedCodeStepIndex(lastRun.error, steps)
+        : steps.length - 1,
       elapsedMs,
       percent: lastRun.status === 'succeeded'
         ? 100
@@ -1533,7 +1611,7 @@ function getCodeFlowState(
     const message = errorMessage(error)
     return {
       status: 'failed',
-      activeIndex: failedCodeStepIndex(message),
+      activeIndex: failedCodeStepIndex(message, steps),
       elapsedMs,
       percent: Math.min(100, (elapsedMs / CODE_RUN_TIMEOUT_MS) * 100),
       label: elapsedMs > 0 ? `失败 ${formatCountdown(elapsedMs)}` : '请求失败',
@@ -1553,34 +1631,43 @@ function getCodeFlowState(
   }
 }
 
-function activeCodeStepIndex(elapsedMs: number) {
+function activeCodeStepIndex(elapsedMs: number, steps: CodeFlowStep[]) {
   let index = 0
-  for (const [stepIndex, step] of codeFlowSteps.entries()) {
+  for (const [stepIndex, step] of steps.entries()) {
     if (elapsedMs >= step.offsetMs) {
       index = stepIndex
     }
   }
-  return Math.min(index, codeFlowSteps.length - 2)
+  return Math.min(index, steps.length - 2)
 }
 
-function failedCodeStepIndex(message: string) {
+function failedCodeStepIndex(message: string, steps: CodeFlowStep[]) {
   const text = message.toLowerCase()
+  const pcYYBStep = steps.findIndex((step) => step.key === 'pc-yyb-login')
+  if (pcYYBStep >= 0 && (text.includes('login code') || text.includes('-109') || text.includes('-105'))) {
+    return pcYYBStep
+  }
   if (text.includes('login buffer') || text.includes('unionid')) {
-    return 2
+    return stepIndexByKey(steps, 'login-buffer', 1)
   }
   if (text.includes('manualauth')) {
-    return 3
+    return stepIndexByKey(steps, 'manualauth', 1)
   }
   if (text.includes('js-login') || text.includes('jscode')) {
-    return 4
+    return stepIndexByKey(steps, 'js-login', steps.length - 2)
   }
   if (text.includes('refresh token') || text.includes('token')) {
-    return 1
+    return stepIndexByKey(steps, 'refresh', 1)
   }
   if (text.includes('timed out') || text.includes('timeout')) {
-    return 4
+    return Math.max(0, steps.length - 2)
   }
   return 0
+}
+
+function stepIndexByKey(steps: CodeFlowStep[], key: string, fallback: number) {
+  const index = steps.findIndex((step) => step.key === key)
+  return index >= 0 ? index : Math.min(fallback, steps.length - 1)
 }
 
 function exchangeRunElapsed(run: ExchangeRun) {
@@ -1610,6 +1697,10 @@ function shouldReachCodeStep(flow: CodeFlowState, index: number) {
     return true
   }
   return index <= flow.activeIndex
+}
+
+function codeFlowStepsForType(type: CodeType) {
+  return type === 2 ? httpCodeFlowSteps : legacyCodeFlowSteps
 }
 
 function formatCountdown(ms: number) {

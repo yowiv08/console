@@ -46,6 +46,7 @@ export type ScanSession = {
 }
 
 export type ExchangeStatus = 'running' | 'succeeded' | 'failed'
+export type CodeType = 1 | 2
 
 export type ExchangeRun = {
   id: number
@@ -151,10 +152,10 @@ export const api = {
   getScan: (id: number) => request<ScanSession>(`/api/scans/${id}`),
   pollScan: (id: number) =>
     request<ScanSession>(`/api/scans/${id}/poll`, { method: 'POST' }),
-  exchangeCode: (unionid: string, appid: string) =>
+  exchangeCode: (unionid: string, appid: string, type: CodeType) =>
     request<ExchangeRun>(`/api/accounts/${encodeURIComponent(unionid)}/code`, {
       method: 'POST',
-      body: JSON.stringify({ appid }),
+      body: JSON.stringify({ appid, type }),
     }),
   run: (id: number) => request<ExchangeRun>(`/api/runs/${id}`),
 }

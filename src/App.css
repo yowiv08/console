@@ -431,6 +431,7 @@ button:disabled {
 .text-button:focus-visible,
 input:focus-visible,
 select:focus-visible,
+.segmented-control input:focus-visible + span,
 .nav-link:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
@@ -712,6 +713,90 @@ select {
 
 input::placeholder {
   color: oklch(0.48 0.035 255);
+}
+
+.code-type-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.code-type-fieldset legend {
+  margin-bottom: 7px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+}
+
+.segmented-control label {
+  min-width: 0;
+  display: block;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.segmented-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.segmented-control span {
+  min-height: 46px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 7px 10px;
+  border-radius: calc(var(--radius-control) - 2px);
+  color: var(--ink-soft);
+  background: transparent;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.segmented-control strong,
+.segmented-control small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.segmented-control small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.segmented-control input:checked + span {
+  color: var(--primary-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-tight);
+}
+
+.segmented-control input:checked + span small {
+  color: var(--primary-strong);
 }
 
 .qr-stage {
